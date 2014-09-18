@@ -52,6 +52,7 @@ class GPing:
     This class, when instantiated will start listening for ICMP responses.
     Then call its send method to send pings. Callbacks will be sent ping
     details
+    Limitation is 2^16 ips can be pinged at a time.
     """
     def __init__(self,timeout=2,max_outstanding=10):
         """
@@ -94,8 +95,13 @@ class GPing:
         """
         print "shutting down"
         self.die_event.set()
-        socket.cancel_wait()
-        gevent.joinall([self.receive_glet,self.processto_glet])
+        #socket.cancel_wait()
+	try:
+		self.socket.shutdown(2)
+	except:
+		pass
+        gevent.kill(self.receive_glet)
+	gevent.kill(self.processto_glet)
 
 
     def join(self):
@@ -103,7 +109,7 @@ class GPing:
         does a lot of nothing until self.pings is empty
         """
         while len(self.pings):
-            gevent.sleep()
+            gevent.sleep(self.timeout)
 
 
     def send(self, dest_addr, callback, psize=64):
@@ -115,7 +121,8 @@ class GPing:
         """
         # make sure we dont have too many outstanding requests
         while len(self.pings) >= self.max_outstanding:
-            gevent.sleep()
+        	print 'Waiting'
+		gevent.sleep(self.timeout/2)
 
         #resolve hostnames
         dest_addr  =  socket.gethostbyname(dest_addr)
@@ -159,6 +166,7 @@ class GPing:
 
         #mark the packet as sent
         self.pings[packet_id]['sent'] = True
+	print "Sent %s" % dest_addr
 
 
     def __process_timeouts__(self):
@@ -166,13 +174,14 @@ class GPing:
         check to see if any of our pings have timed out 
         """
         while not self.die_event.is_set():
-            for i in self.pings:
-                if self.pings[i]['sent'] and time.time() - self.pings[i]['send_time'] > self.timeout:
-                    self.pings[i]['error'] = True
-                    self.pings[i]['callback'](self.pings[i])
-                    del(self.pings[i])
-                    break
-            gevent.sleep()
+            for k,ping in self.pings.items():
+                if ping['sent'] and time.time() - ping['send_time'] > self.timeout:
+                    ping['error'] = True
+                    ping['callback'](ping)
+                    del(self.pings[k])
+                    #break
+	    print 'TIMEOUT'
+            gevent.sleep(self.timeout/2)
 
 
     def __receive__(self):
@@ -215,8 +224,18 @@ class GPing:
 
 
 if __name__ == '__main__':
-    top_100_domains = ['google.com','facebook.com','youtube.com','yahoo.com','baidu.com','wikipedia.org','live.com','qq.com','twitter.com','amazon.com','linkedin.com','blogspot.com','google.co.in','taobao.com','sina.com.cn','yahoo.co.jp','msn.com','google.com.hk','wordpress.com','google.de','google.co.jp','google.co.uk','ebay.com','yandex.ru','163.com','google.fr','weibo.com','googleusercontent.com','bing.com','microsoft.com','google.com.br','babylon.com','soso.com','apple.com','mail.ru','t.co','tumblr.com','vk.com','google.ru','sohu.com','google.es','pinterest.com','google.it','craigslist.org','bbc.co.uk','livejasmin.com','tudou.com','paypal.com','blogger.com','xhamster.com','ask.com','youku.com','fc2.com','google.com.mx','xvideos.com','google.ca','imdb.com','flickr.com','go.com','tmall.com','avg.com','ifeng.com','hao123.com','zedo.com','conduit.com','google.co.id','pornhub.com','adobe.com','blogspot.in','odnoklassniki.ru','google.com.tr','cnn.com','aol.com','360buy.com','google.com.au','rakuten.co.jp','about.com','mediafire.com','alibaba.com','ebay.de','espn.go.com','wordpress.org','chinaz.com','google.pl','stackoverflow.com','netflix.com','ebay.co.uk','uol.com.br','amazon.de','ameblo.jp','adf.ly','godaddy.com','huffingtonpost.com','amazon.co.jp','cnet.com','globo.com','youporn.com','4shared.com','thepiratebay.se','renren.com']
-    gp = GPing()
-    for domain in top_100_domains:
-        gp.send(domain,test_callback)
+    from gevent import monkey
+    monkey.patch_all()
+
+    def success_callback(response):
+	print response
+
+    gp = GPing(10,255)
+    for mask4 in range(1,255):
+		try:
+			domain = '10.95.22.%s' % mask4
+        		gp.send(domain,success_callback)
+		except:
+			print "Exception with domain %s" % domain
     gp.join()
+    gp.die()
