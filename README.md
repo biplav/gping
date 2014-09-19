@@ -1,4 +1,5 @@
 # GPing #
+This is a fork of gping project, things currently changed is for reducing the CPU spikes by reducing the context switching of timeout grrenlet and other minor things. For some reason, die was not working, it wwas worked up to make it work. Some more changes might come in future as I test it further in production.
 
 This is a fork of the python-ping project that strips out most everything and replaces it with gevent. The point is to have an event driven ping utility for doing many concurrent pings...
 
@@ -7,6 +8,7 @@ This is a fork of the python-ping project that strips out most everything and re
     gp = GPing()
     gp.send("127.0.0.1",test_callback)
     gp.join()
+    gp.die()
 
 ## Install ##
 
